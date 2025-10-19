@@ -1,0 +1,21 @@
+# Build artifacts
+*.exe
+*.dll
+*.obj
+*.o
+*.log
+
+# ImGui config
+imgui.ini
+
+# VS Code settings
+.vscode/
+
+# build
+build/
+
+# some assets
+assets/audio/
+assets/skybox
+# vcpkg
+vcpkg_installed/
