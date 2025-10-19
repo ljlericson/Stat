@@ -37,7 +37,7 @@ namespace ljl::Stat
 			m_sampleData.clear();
 		}
 
-		void operator<(int64_t newNumber)
+		void operator<(float64_t newNumber)
 		{
 			if(m_sampleActive)
 			{
@@ -211,29 +211,20 @@ namespace ljl::Stat
 				mu    = std::get<0>(m_sampleData.at(controlSample)),
 				sigma = sqrt(std::get<1>(m_sampleData.at(controlSample))),
 
-				xBar  = std::get<0>(m_sampleData.at(testSample)),
-				s     = sqrt(std::get<1>(m_sampleData.at(testSample)))
+				xBar  = std::get<0>(m_sampleData.at(testSample))
 			;
 
 			size_t n = std::get<2>(m_sampleData.at(testSample));
-			float64_t Z = abs((xBar - mu)) / (s / sqrt(n));
+			float64_t Z = (xBar - mu) / (sigma / sqrt(n));
 
 			switch (testType)
 			{
 			case HypothTestType::hasIncreased:
-				if (xBar > mu)
-				{
-					return 1.0f - this->p_normalCdf(Z);
-				}
-				else
-				{
-					return this->p_normalCdf(Z);
-				}
-					
+				return 1.0 - this->p_normalCdf(Z);
 			case HypothTestType::hasDecreased:
-				break;
+				return this->p_normalCdf(Z);
 			case HypothTestType::hasChanged:
-				break;
+				return 2.0 * (1.0 - this->p_normalCdf(Z));
 			}
 
 			return -1.0f;
