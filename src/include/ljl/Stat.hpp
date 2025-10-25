@@ -1,8 +1,11 @@
+#pragma once
 #include <string>
 #include <memory>
 #include <unordered_map>
 #include <tuple>
 #include <cmath>
+#include <expected>
+#include <type_traits>
 
 #ifndef STAT_NODISCARD
 #define STAT_NODISCARD [[nodiscard]]
@@ -10,338 +13,583 @@
 
 namespace ljl::Stat
 {
-	class Stat
+	namespace // priv stuff
+	{
+		std::string s_errString;
+		std::string s_errHolder;
+
+		struct __BasicSample
+		{
+			virtual double getVar() const = 0;
+
+			virtual double getStdDev() const = 0;
+
+			//virtual std::string getSampleName() const = 0;
+		};
+	}
+
+	double p_normalCdf(double Z)
+	{
+		return 0.5 * (1.0 + std::erf(Z / std::sqrt(2.0)));
+	}
+
+	constexpr uint64_t factorial(uint8_t n)
+	{
+		if (n > 20)
+			throw std::runtime_error("N is too large for factorial");
+
+		uint64_t result = 1;
+		for (uint8_t i = 1; i <= n; ++i)
+		{
+			result *= i;
+		}
+		return result;
+	}
+
+	constexpr uint64_t choose(uint8_t n, uint8_t r)
+	{
+		return factorial(n) / (factorial(r) * factorial(n - r));
+	}
+
+	const std::string& getError()
+	{
+		s_errHolder = s_errString;
+		s_errString.clear();
+		return s_errHolder;
+	}
+
+	bool errIncured()
+	{
+		return !s_errString.empty();
+	}
+
+//  |========================================|
+//	|=============| EXCEPTIONS |=============| 
+//	|========================================|
+
+	class SampleTypeMismatchException : public std::exception
 	{
 	public:
-		struct Sample
+		~SampleTypeMismatchException()
 		{
-			double sumX = 0;
-			double sumXsqr = 0;
-			size_t numOfElements = 0;
-
-			std::pair<double, double> meanAndVar;
-		};
-
-	public:
-		void startSample(const std::string& sampleName)
-		{
-			// checking if a sample already exists under
-			// the name given
-			if(!m_sampleActive && !m_samples.contains(sampleName))
-			{
-				// if it doesn't just make a new sample
-				m_activeSample = std::make_unique<Sample>();
-
-				m_activeSampleName = sampleName;
-				m_sampleActive = true;
-			}
-			else if(!m_sampleActive)
-			{
-				// if the sample already exists we just
-				// copy the data and treat it as if it
-				// was a new sample
-				// Later when .endSample() is called
-				// the new sample data will be saved
-				m_activeSample = std::make_unique<Sample>(); // make new sample
-				*m_activeSample = *m_samples.at(sampleName); // then copy the data
-
-				m_activeSampleName = sampleName;
-				m_sampleActive = true;
-			}
+			if(m_errorCollected && !std::uncaught_exceptions())
+				std::cout << "e.what() ---> \nSample types mismatched, i.e discrete sample used in place of continuous\n";
 		}
 
-		void endSample()
+		const char* what() const noexcept override
 		{
-			if(m_sampleActive)
-			{
-				m_activeSample->meanAndVar =
-					std::pair{
-					this->getMean(),
-					this->getVar(),
-				};
+			m_errorCollected = true;
+			return "e.what() ---> \nSample types mismatched, i.e discrete sample used in place of continuous\n";
+		}
 
-				if (m_samples.contains(m_activeSampleName))
-				{
-					m_samples[m_activeSampleName] = std::move(m_activeSample);
-				}
+	private:
+		mutable bool m_errorCollected = false;
+	};
+
+	class HypothosisTestException : public std::exception
+	{
+	public:
+		HypothosisTestException(const std::string& err)
+			: m_err(err)
+		{	}
+
+		~HypothosisTestException()
+		{
+			if (!m_errorCollected && std::uncaught_exceptions())
+			{
+				if (m_err.empty())
+					std::cout << "e.what() ---> \nHypothosis test error\n";
 				else
-				{
-					m_samples.insert(std::pair{
-						m_activeSampleName,
-						std::move(m_activeSample)
-					});
-				}
-				m_activeSampleName.clear();
-				m_sampleActive = false;
+					std::cout << m_err << '\n';
 			}
 		}
 
-		void deleteSample(const std::string& sampleName)
+		const char* what() const noexcept override
 		{
-			if (m_samples.contains(sampleName))
-				m_samples.erase(sampleName);
+			std::string _return;
+			if (m_err.empty())
+				_return = "e.what() ---> \nHypothosis test error\n";
+			else
+				_return = m_err + '\n';
+
+			m_errorCollected = true;
+			return _return.c_str();
 		}
 
-		STAT_NODISCARD
-		const Sample& getSample(const std::string& sampleName)
-		{
-			if (!m_samples.contains(sampleName))
-				std::cout << "ERROR: NO SAMPLE FOUND\n";
-			// will crash if no sample exists
-			// to prevent underfined behaviour
-			// from dangling refs
-			return *m_samples.at(sampleName);
-		}
+	private:
+		mutable bool m_errorCollected = false;
+		std::string m_err;
+	};
 
-		void clear()
-		{
-			if (m_sampleActive)
-				this->endSample();
-
-			m_samples.clear();
-			m_activeSampleName.clear();
-		}
-
-		void operator<<(double newNumber)
-		{
-			if(m_sampleActive)
-			{
-				m_activeSample->sumX += newNumber;
-				m_activeSample->sumXsqr += newNumber * newNumber;
-				m_activeSample->numOfElements++;
-			}
-		}
-
-//  |========================================|
-//  |============| FUNDEMENTALS |============| 
-//  |========================================|
-
+	class InvalidParametreException : public std::exception
+	{
 	public:
-		double getMean()
-		{
-			if (!m_sampleActive)
-				return -1.0;
+		InvalidParametreException(const std::string& err)
+			: m_err(err)
+		{	}
 
-			return m_activeSample->sumX / m_activeSample->numOfElements;
+		~InvalidParametreException()
+		{
+			if (!m_errorCollected && std::uncaught_exceptions())
+			{
+				if (m_err.empty())
+					std::cout << "e.what() ---> \nInvalid parametre(s) entered\n";
+				else
+					std::cout << m_err << '\n';
+			}
 		}
 
-		double getMean(const std::string& sample)
+		const char* what() const noexcept override
 		{
-			return std::get<0>(m_samples.at(sample)->meanAndVar);
+			std::string _return;
+			if (m_err.empty())
+				_return = "e.what() ---> \nInvalid parametre(s) entered\n";
+			else
+				_return = m_err + '\n';
+
+			m_errorCollected = true;
+			return _return.c_str();
 		}
 
-		double getVar()
-		{
-			if (!m_sampleActive)
-				return -1.0;
+	private:
+		mutable bool m_errorCollected = false;
+		std::string m_err;
+	};
 
-			double mean = this->getMean();
-			return (m_activeSample->sumXsqr / m_activeSample->numOfElements) - (mean * mean);
+	class InvalidSampleTypeException : public std::exception
+	{
+	public:
+		InvalidSampleTypeException(std::string err)
+			: m_err(std::move(err))
+		{
 		}
 
-		double getVar(const std::string& sample)
+		~InvalidSampleTypeException()
 		{
-			return std::get<1>(m_samples.at(sample)->meanAndVar);
+			if (!m_errorCollected && std::uncaught_exceptions())
+			{
+				if (m_err.empty())
+					std::cout << "e.what() ---> \nInvalid/unsupported sample type used\n";
+				else
+					std::cout << m_err << '\n';
+			}
 		}
 
-		double getUnbiasedEstVar()
+		const char* what() const noexcept override
 		{
-			return (1.0 / (m_activeSample->numOfElements - 1)) * (
-				m_activeSample->sumXsqr - 
-				((m_activeSample->sumX * m_activeSample->sumX) / m_activeSample->numOfElements)
+			if (m_err.size() == 0)
+			{
+				m_err = std::move(std::string{ "e.what() ---> Invalid/unsupported sample type used\n" });
+			}
+
+			m_errorCollected = true;
+			return m_err.c_str();
+		}
+
+	private:
+		mutable bool m_errorCollected = false;
+		mutable std::string m_err;
+	};
+
+//  |========================================|
+//	|===========| SAMPLE STRUCTS |===========| 
+//	|========================================|
+
+	struct ContinuosSample : public __BasicSample
+	{
+		double getUnbiasedEstVar() const
+		{
+			return (1.0 / (numOfElements - 1)) * (
+				sumXsqr -
+				((sumX * sumX) / numOfElements)
 				);
 		}
 
-		double getStdDev()
+		double getMean() const
 		{
-			if (!m_sampleActive)
-				return -1.0;
+			return sumX / numOfElements;
+		}
 
+		double getVar() const override
+		{
+			double mean = this->getMean();
+			return (sumXsqr / numOfElements) - (mean * mean);
+		}
+
+		double getStdDev() const override
+		{
 			return std::sqrt(this->getVar());
 		}
 
+		void operator<<(double num)
+		{
+			this->sumX += num;
+			this->sumXsqr += num * num;
+			this->numOfElements++;
+		}
+
+		double sumX = 0;
+		double sumXsqr = 0;
+		size_t numOfElements = 0;
+	};
+
+	struct BinomialSample : public __BasicSample
+	{
+		enum struct Case
+		{
+			success,
+			fail
+		};
+
+		enum struct Order
+		{
+			fixed,
+			any
+		};
+
+		BinomialSample(double p)
+			: p(p) { }
+
+		double getProportion() const
+		{
+			return this->p;
+		}
+
+		/*
+		IMPORTANT: This function will return an error if the sample size is over 20,
+		this is because this function uses factorials and over 20! the number is so
+		large that a uint64_t overflows (never thought I would write that)
+		@return Returns the chance of the sample randomly occuring given the proportion
+		*/
+		auto getChanceOfSample(Order order) const -> std::expected<double, std::string>
+		{
+			// compiler gets annoyed otherwise
+			uint8_t n = 0;
+
+			switch (order)
+			{
+			case Order::any:
+				// prevent int overflow due to using uint8
+				if (numFails + numSuccsess <= 20)
+				{
+					n = static_cast<uint8_t>(numFails + numSuccsess);
+					return choose(n, static_cast<uint8_t>(numSuccsess)) * (std::pow(p, numSuccsess) * (std::pow((1.0 - p), numFails)));
+				}
+				else
+				{
+					s_errString = "ERROR: SIZE OF SAMPLE IS TOO LARGE TO ESTIMATE CHANCE OF";
+
+					return std::unexpected("ERROR: SIZE OF SAMPLE IS TOO LARGE TO ESTIMATE CHANCE OF");
+				}
+
+			case Order::fixed:
+				return (std::pow(p, numSuccsess) * (std::pow((1.0 - p), numFails)));
+
+			default:
+				return -1;
+			}
+		}
+
+		double getExpected() const
+		{
+			return (numFails + numSuccsess) * p;
+		}
+
+		double getPHat() const
+		{
+			return static_cast<double>(numSuccsess) / static_cast<double>(numSuccsess + numFails);
+		}
+
+		double getVar() const override
+		{
+			size_t n = numSuccsess + numFails;
+			return (p * (1.0 - p)) / n; // variance of proportion
+		}
+
+		double getStdDev() const override
+		{
+			return std::sqrt(this->getVar());
+		}
+
+		size_t getNumDataPoints() const
+		{
+			return numSuccsess + numFails;
+		}
+
+		void operator<<(Case _case)
+		{
+			switch (_case)
+			{
+			case Case::success:
+				numSuccsess++;
+				break;
+			case Case::fail:
+				numFails++;
+				break;
+			}
+		}
+
+		size_t numFails = 0;
+		size_t numSuccsess = 0;
+		double p = 0.0;
+	};
 
 //  |========================================|
 //	|========| NORMAL APPROXIMATION |========| 
 //	|========================================|
 
-	public:
-		enum class StdDistTail
+	enum class StdDistTail
+	{
+		left,
+		right
+	};
+
+	double N_normalApproximationProb(double z, StdDistTail tail, const ContinuosSample& sample)
+	{
+		double mean = sample.getMean();
+		double stdDev = sample.getStdDev();
+
+		double Z = abs((z - mean)) / stdDev;
+
+		switch (tail)
 		{
-			left,
-			right
-		};
-
-	public:
-		double N_normalApproximationProb(double z, StdDistTail tail, const std::string& sample)
-		{
-			double mean = std::get<0>(m_samples.at(sample)->meanAndVar);
-			double stdDev = std::sqrt(std::get<1>(m_samples.at(sample)->meanAndVar));
-
-			double Z = abs((z - mean)) / stdDev;
-
-			switch (tail)
+		case StdDistTail::left:
+			if (z > mean)
 			{
-			case StdDistTail::left:
-				if (z > mean)
-				{
-					return this->p_normalCdf(Z);
-				}
-				else
-				{
-					return 1.0f - this->p_normalCdf(Z);
-				}
-			case StdDistTail::right:
-				if (z < mean)
-				{
-					return this->p_normalCdf(Z);
-				}
-				else
-				{
-					return 1.0f - this->p_normalCdf(Z);
-				}
-				break;
+				return p_normalCdf(Z);
 			}
-
-			return -1.0f; // something went wrong if you get this
+			else
+			{
+				return 1.0f - p_normalCdf(Z);
+			}
+		case StdDistTail::right:
+			if (z < mean)
+			{
+				return p_normalCdf(Z);
+			}
+			else
+			{
+				return 1.0f - p_normalCdf(Z);
+			}
+			break;
 		}
 
-		double N_normalApproximationProb(double z, StdDistTail tail)
+		return -1.0f; // something went wrong if you get this
+	}
+
+	double N_normalAproxToBinomial(double z, StdDistTail tail, const BinomialSample& sample)
+	{
+		double mean = sample.getExpected();
+		double stdDev = sample.getStdDev();
+
+		double contCorrection = (tail == StdDistTail::left) ? -0.5 : 0.5;
+
+		double Z = abs(((z + contCorrection) - mean)) / stdDev;
+
+		switch (tail)
 		{
-			double mean = 0;
-			double stdDev = 0;
-			size_t numElements = 0;
-			for (const auto& [key, samplePtr] : m_samples)
+		case StdDistTail::left:
+			if (z > mean)
 			{
-				mean += samplePtr->meanAndVar.first;
-				stdDev += samplePtr->meanAndVar.second;
-				numElements++;
+				return p_normalCdf(Z);
 			}
-			mean /= numElements;
-			stdDev = std::sqrt(stdDev / numElements);
-
-
-			double Z = std::abs((z - mean)) / stdDev;
-
-			switch (tail)
+			else
 			{
-			case StdDistTail::left:
-				if (z > mean)
-				{
-					return this->p_normalCdf(Z);
-				}
-				else
-				{
-					return 1.0f - this->p_normalCdf(Z);
-				}
-			case StdDistTail::right:
-				if (z < mean)
-				{
-					return this->p_normalCdf(Z);
-				}
-				else
-				{
-					return 1.0f - this->p_normalCdf(Z);
-				}
-				break;
+				return 1.0f - p_normalCdf(Z);
 			}
-
-			return -1.0f; // something went wrong if you get this
+		case StdDistTail::right:
+			if (z < mean)
+			{
+				return p_normalCdf(Z);
+			}
+			else
+			{
+				return 1.0f - p_normalCdf(Z);
+			}
+			break;
 		}
+
+		return -1.0f; // something went wrong if you get this
+	}
 
 //	|========================================|
 //	|=========| HYPOTHOSIS TESTING |=========|
 //  |========================================|
 	
-	public:
-		enum class HypothTestType
-		{
-			hasIncreased,
-			hasDecreased,
-			hasChanged
-		};
+	enum class HypothTestType
+	{
+		hasIncreased,
+		hasDecreased,
+		hasChanged
+	};
 
-		// Returns the critical significance level or the probabillity
-		// of incorectly rejecting the true null hypothosis or in this
-		// case the probabillity of incorectly stating a sample has 
-		// increased/decreased/changed from the population
-		double HY_getCriticalSignificanLevel(HypothTestType testType, const std::string& controlSample, const std::string& testSample)
-		{
-			// mu   = population mean (assumed)
-			// s2   = population sd (assumed)
-			// xBar = sample mean
-			// s2   = sample sd
-			double 
-				mu    = std::get<0>(m_samples.at(controlSample)->meanAndVar),
-				sigma = std::sqrt(std::get<1>(m_samples.at(controlSample)->meanAndVar)),
+	enum class PopVarianceEstimationType
+	{
+		usePopulation,
+		useUnbaisedEstimate
+	};
 
-				xBar  = std::get<0>(m_samples.at(testSample)->meanAndVar)
-			;
 
-			size_t n = m_samples.at(testSample)->numOfElements;
-			double Z = (xBar - mu) / (sigma / std::sqrt(n));
-
-			switch (testType)
-			{
-			case HypothTestType::hasIncreased:
-				return 1.0 - this->p_normalCdf(Z);
-			case HypothTestType::hasDecreased:
-				return this->p_normalCdf(Z);
-			case HypothTestType::hasChanged:
-				return 2.0 * (1.0 - this->p_normalCdf(Z));
-			}
-
-			return -1.0f;
-		}
-
-		bool HY_performHypothTest(HypothTestType testType, double sigLevel, const std::string& controlSample, const std::string& testSample)
+	// Returns the critical significance level or the probabillity
+	// of incorectly rejecting the true null hypothosis or in this
+	// case the probabillity of incorectly stating a sample has 
+	// increased/decreased/changed from the population
+	template<typename T> requires std::is_base_of_v<__BasicSample, T>
+	double HY_getCriticalSignificanLevel(HypothTestType testType, PopVarianceEstimationType estType, const T& controlSample, const T& testSample)
+	{
+		if constexpr (std::is_same_v<T, ContinuosSample>)
 		{
 			// mu   = population mean (assumed)
 			// s2   = population sd (assumed)
 			// xBar = sample mean
 			// s2   = sample sd
 			double
-				mu = std::get<0>(m_samples.at(controlSample)->meanAndVar),
-				sigma = std::sqrt(std::get<1>(m_samples.at(controlSample)->meanAndVar)),
+				mu = controlSample.getMean(),
+				xBar = testSample.getMean(),
 
-				xBar = std::get<0>(m_samples.at(testSample)->meanAndVar)
+				sigma = 0.0
 				;
 
-			size_t n = m_samples.at(testSample)->numOfElements;
+			switch (estType)
+			{
+			case PopVarianceEstimationType::usePopulation:
+				sigma = controlSample.getStdDev();
+				break;
+			case PopVarianceEstimationType::useUnbaisedEstimate:
+				sigma = std::sqrt(testSample.getUnbiasedEstVar());
+				break;
+			}
+
+			size_t n = testSample.numOfElements;
 			double Z = (xBar - mu) / (sigma / std::sqrt(n));
 
 			switch (testType)
 			{
 			case HypothTestType::hasIncreased:
-				return sigLevel > (1.0 - this->p_normalCdf(Z));
+				return 1.0 - p_normalCdf(Z);
 			case HypothTestType::hasDecreased:
-				return sigLevel > (this->p_normalCdf(Z));
+				return p_normalCdf(Z);
 			case HypothTestType::hasChanged:
-				return sigLevel > (2.0 * (1.0 - this->p_normalCdf(Z)));
+				return 2.0 * (1.0 - p_normalCdf(Z));
 			}
 
-			return false;
+			return -1.0f;
 		}
-
-	private:
-		double p_normalCdf(double Z)
+		else if constexpr (std::is_same_v<T, BinomialSample>)
 		{
-			return 0.5 * (1.0 + std::erf(Z / std::sqrt(2.0)));
-		}
+			// mu   = population mean (assumed)
+			// s2   = population sd (assumed)
+			// xBar = sample mean
+			// s2   = sample sd
+			double
+				p = controlSample.getProportion(),
+				pHat = testSample.getPHat(),
 
-		double p_calcUnbiasedVar()
+				sigma = 0.0
+				;
+
+			switch (estType)
+			{
+			case PopVarianceEstimationType::usePopulation:
+				sigma = controlSample.getStdDev();
+				break;
+			case PopVarianceEstimationType::useUnbaisedEstimate:
+				sigma = std::sqrt((pHat * (1.0 - pHat)) / testSample.getNumDataPoints());
+				break;
+			}
+
+			if (sigma <= 1e-12)
+				throw HypothosisTestException{ "Standard deviation is zero � cannot compute Z" };
+
+			size_t n = testSample.getNumDataPoints();
+			double Z = (pHat - p) / sigma;
+
+			switch (testType)
+			{
+			case HypothTestType::hasIncreased:
+				return 1.0 - p_normalCdf(Z);
+			case HypothTestType::hasDecreased:
+				return p_normalCdf(Z);
+			case HypothTestType::hasChanged:
+				return 2.0 * (1.0 - p_normalCdf(std::abs(Z)));
+			}
+
+			return -1.0f;
+		}
+		else
+			throw InvalidSampleTypeException{"Invalid sample type given to hypothosis test, supportted types are Binomial and Continuous"};
+	}
+
+
+	double HY_getCriticalSignificanLevel(HypothTestType testType, double stdDev, const ContinuosSample& controlSample, const ContinuosSample& testSample)
+	{
+		// mu   = population mean (assumed)
+		// s2   = population sd (assumed)
+		// xBar = sample mean
+		// s2   = sample sd
+		double
+			mu = controlSample.getMean(),
+			xBar = testSample.getMean(),
+
+			sigma = stdDev
+			;
+
+		size_t n = testSample.numOfElements;
+		double Z = (xBar - mu) / (sigma / std::sqrt(n));
+
+		switch (testType)
 		{
-			return (1.0 / (m_activeSample->numOfElements - 1)) * (
-				m_activeSample->sumXsqr -
-				((m_activeSample->sumX * m_activeSample->sumX) / m_activeSample->numOfElements)
-				);
+		case HypothTestType::hasIncreased:
+			return 1.0 - p_normalCdf(Z);
+		case HypothTestType::hasDecreased:
+			return p_normalCdf(Z);
+		case HypothTestType::hasChanged:
+			return 2.0 * (1.0 - p_normalCdf(Z));
 		}
 
-	private:
-		bool m_sampleActive = false; 
-		std::string m_activeSampleName;
-		std::unique_ptr<Sample> m_activeSample;
+		return -1.0f;
+	}
 
-		std::unordered_map<std::string, std::unique_ptr<Sample>> m_samples;
-	};
+	bool HY_performHypothTest(HypothTestType testType, PopVarianceEstimationType estType, double sigLevel, const ContinuosSample& controlSample, const ContinuosSample& testSample)
+	{
+		// mu   = population mean (assumed)
+		// s2   = population sd (assumed)
+		// xBar = sample mean
+		// s2   = sample sd
+		double
+			mu = controlSample.getMean(),
+			xBar = testSample.getMean(),
+
+			sigma = 0.0
+			;
+
+		switch (estType)
+		{
+		case PopVarianceEstimationType::usePopulation:
+			sigma = controlSample.getStdDev();
+			break;
+		case PopVarianceEstimationType::useUnbaisedEstimate:
+			sigma = std::sqrt(testSample.getUnbiasedEstVar());
+			break;
+		}
+
+		size_t n = testSample.numOfElements;
+		double Z = (xBar - mu) / (sigma / std::sqrt(n));
+
+		switch (testType)
+		{
+		case HypothTestType::hasIncreased:
+			return sigLevel > (1.0 - p_normalCdf(Z));
+		case HypothTestType::hasDecreased:
+			return sigLevel > (p_normalCdf(Z));
+		case HypothTestType::hasChanged:
+			return sigLevel > (2.0 * (1.0 - p_normalCdf(Z)));
+		}
+
+		return false;
+	}
+
+	template double ljl::Stat::HY_getCriticalSignificanLevel<ContinuosSample>(HypothTestType, PopVarianceEstimationType, const ContinuosSample&, const ContinuosSample&);
+	template double ljl::Stat::HY_getCriticalSignificanLevel<BinomialSample>(HypothTestType, PopVarianceEstimationType, const BinomialSample&, const BinomialSample&);
+
 } 
