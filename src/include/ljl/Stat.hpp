@@ -15,8 +15,8 @@ namespace ljl::Stat
 {
 	namespace // priv stuff
 	{
-		std::string s_errString;
-		std::string s_errHolder;
+		inline std::string s_errString;
+		inline std::string s_errHolder;
 
 		struct __BasicSample
 		{
@@ -28,12 +28,12 @@ namespace ljl::Stat
 		};
 	}
 
-	double p_normalCdf(double Z)
+	inline double p_normalCdf(double Z)
 	{
 		return 0.5 * (1.0 + std::erf(Z / std::sqrt(2.0)));
 	}
 
-	constexpr uint64_t factorial(uint8_t n)
+	inline uint64_t factorial(uint8_t n)
 	{
 		if (n > 20)
 			throw std::runtime_error("N is too large for factorial");
@@ -46,19 +46,19 @@ namespace ljl::Stat
 		return result;
 	}
 
-	constexpr uint64_t choose(uint8_t n, uint8_t r)
+	inline uint64_t choose(uint8_t n, uint8_t r)
 	{
 		return factorial(n) / (factorial(r) * factorial(n - r));
 	}
 
-	const std::string& getError()
+	inline const std::string& getError()
 	{
 		s_errHolder = s_errString;
 		s_errString.clear();
 		return s_errHolder;
 	}
 
-	bool errIncured()
+	inline bool errIncured()
 	{
 		return !s_errString.empty();
 	}
@@ -106,19 +106,18 @@ namespace ljl::Stat
 
 		const char* what() const noexcept override
 		{
-			std::string _return;
 			if (m_err.empty())
-				_return = "e.what() ---> \nHypothosis test error\n";
+				m_err = "e.what() ---> \nHypothosis test error\n";
 			else
-				_return = m_err + '\n';
+				m_err = m_err + '\n';
 
 			m_errorCollected = true;
-			return _return.c_str();
+			return m_err.c_str();
 		}
 
 	private:
 		mutable bool m_errorCollected = false;
-		std::string m_err;
+		mutable std::string m_err;
 	};
 
 	class InvalidParametreException : public std::exception
@@ -141,19 +140,18 @@ namespace ljl::Stat
 
 		const char* what() const noexcept override
 		{
-			std::string _return;
 			if (m_err.empty())
-				_return = "e.what() ---> \nInvalid parametre(s) entered\n";
+				m_err = "e.what() ---> \nInvalid parametre(s) entered\n";
 			else
-				_return = m_err + '\n';
+				m_err = m_err + '\n';
 
 			m_errorCollected = true;
-			return _return.c_str();
+			return m_err.c_str();
 		}
 
 	private:
 		mutable bool m_errorCollected = false;
-		std::string m_err;
+		mutable std::string m_err;
 	};
 
 	class InvalidSampleTypeException : public std::exception
@@ -344,7 +342,7 @@ namespace ljl::Stat
 		right
 	};
 
-	double N_normalApproximationProb(double z, StdDistTail tail, const ContinuosSample& sample)
+	inline double N_normalApproximationProb(double z, StdDistTail tail, const ContinuosSample& sample)
 	{
 		double mean = sample.getMean();
 		double stdDev = sample.getStdDev();
@@ -377,7 +375,7 @@ namespace ljl::Stat
 		return -1.0f; // something went wrong if you get this
 	}
 
-	double N_normalAproxToBinomial(double z, StdDistTail tail, const BinomialSample& sample)
+	inline double N_normalAproxToBinomial(double z, StdDistTail tail, const BinomialSample& sample)
 	{
 		double mean = sample.getExpected();
 		double stdDev = sample.getStdDev();
@@ -435,7 +433,7 @@ namespace ljl::Stat
 	// case the probabillity of incorectly stating a sample has 
 	// increased/decreased/changed from the population
 	template<typename T> requires std::is_base_of_v<__BasicSample, T>
-	double HY_getCriticalSignificanLevel(HypothTestType testType, PopVarianceEstimationType estType, const T& controlSample, const T& testSample)
+	inline double HY_getCriticalSignificanLevel(HypothTestType testType, PopVarianceEstimationType estType, const T& controlSample, const T& testSample)
 	{
 		if constexpr (std::is_same_v<T, ContinuosSample>)
 		{
@@ -499,7 +497,7 @@ namespace ljl::Stat
 			}
 
 			if (sigma <= 1e-12)
-				throw HypothosisTestException{ "Standard deviation is zero � cannot compute Z" };
+				throw HypothosisTestException{ "Standard deviation is zero cannot compute Z" };
 
 			size_t n = testSample.getNumDataPoints();
 			double Z = (pHat - p) / sigma;
@@ -521,7 +519,7 @@ namespace ljl::Stat
 	}
 
 
-	double HY_getCriticalSignificanLevel(HypothTestType testType, double stdDev, const ContinuosSample& controlSample, const ContinuosSample& testSample)
+	inline double HY_getCriticalSignificanLevel(HypothTestType testType, double stdDev, const ContinuosSample& controlSample, const ContinuosSample& testSample)
 	{
 		// mu   = population mean (assumed)
 		// s2   = population sd (assumed)
@@ -550,7 +548,7 @@ namespace ljl::Stat
 		return -1.0f;
 	}
 
-	bool HY_performHypothTest(HypothTestType testType, PopVarianceEstimationType estType, double sigLevel, const ContinuosSample& controlSample, const ContinuosSample& testSample)
+	inline bool HY_performHypothTest(HypothTestType testType, PopVarianceEstimationType estType, double sigLevel, const ContinuosSample& controlSample, const ContinuosSample& testSample)
 	{
 		// mu   = population mean (assumed)
 		// s2   = population sd (assumed)
