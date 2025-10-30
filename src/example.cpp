@@ -50,6 +50,4 @@ void example()
 		sampleB1,
 		sampleB2
 	) << '\n';
-
-	return 0;
 }
