@@ -3,7 +3,7 @@
 #include "include/ljl/Stat.hpp"
 
 
-int main()
+void example()
 {
 	using namespace ljl;
 	
