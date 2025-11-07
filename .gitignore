@@ -5,6 +5,8 @@
 *.o
 *.log
 
+*.DS_Store
+
 # ImGui config
 imgui.ini
 

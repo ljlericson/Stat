@@ -22,6 +22,7 @@ target_sources(Stat PRIVATE
 # Includes
 target_include_directories(Stat PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    include/
 )
 
 # --- Compiler warnings ---

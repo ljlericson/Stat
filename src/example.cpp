@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>
-#include "include/ljl/Stat.hpp"
+#include <ljl/Stat.hpp>
 
 
 void example()
@@ -50,4 +50,10 @@ void example()
 		sampleB1,
 		sampleB2
 	) << '\n';
+}
+
+int main()
+{
+	example();
+	return 0;
 }

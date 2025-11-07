@@ -1,14 +1,12 @@
 # Stat
 
-Stat is a single header file tool I made for processing and performing calculations on samples of data.
+Stat is a single header c++ library I made for processing and performing calculations on samples of data.
 
-Currently there are binomial and continuous data sample types. These samples can be tested using a Z test to get the critical significance level for whether the test sample has increased, decreased or changed from the control sample.
+Currently there are binomial, continuous and discrete data sample types. These samples can be tested using a Z test to get the critical significance level for whether the test sample has increased, decreased or changed from the control sample.
 
 ___
 
 ### Example
-
-___
 
 ```c++
 using namespace ljl;
@@ -62,11 +60,22 @@ return 0;
 
 ___
 
+### CMake
+
+
+Stat is a single header library, so all you have to do to include in your project is simply add it to target_include_directories.
+
+```cmake
+target_include_directories(proj_name PRIVATE
+    path/to/include/
+)
+```
+
+___
+
 ### Example Application
 
 Takes a control sample of fps and then continuously samples fps to find the significance of how much the mean fps has increased or decreased.
-
-___
 
 ```c++
 void App::Application::sampleFps()

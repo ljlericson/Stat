@@ -1,39 +1,71 @@
+//        __  _ __          _____ __        __ 
+//       / / (_) /  _ _    / ___// /_____ _/ /_
+//      / / / / /  (_|_)   \__ \/ __/ __ `/ __/
+//     / / / / /  _ _     ___/ / /_/ /_/ / /_  
+//    /_/_/ /_/  (_|_)   /____/\__/\__,_/\__/  
+//     /___/
+
+// (C) LINUS ERICSON 2025
+// DOCUMENTATION CAN BE FOUND ON GITHUB PAGE
+// https://github.com/ljlericson/Stat
+
 #pragma once
+#include <iostream>
 #include <string>
-#include <memory>
 #include <unordered_map>
 #include <tuple>
 #include <cmath>
 #include <expected>
 #include <type_traits>
 
-#ifndef STAT_NODISCARD
+#if __cplusplus < 201703L
+#define STAT_NODISCARD
+#else
 #define STAT_NODISCARD [[nodiscard]]
+#endif
+
+#if __cplusplus < 201103L
+#define STAT_NOEXCEPT
+#else
+#define STAT_NOEXCEPT noexcept
+#endif
+
+#if __cplusplus < 202302L
+#define STAT_REQUIRE_BASE_SAMPLE
+#else
+#define STAT_REQUIRE_BASE_SAMPLE requires std::is_base_of_v<__BasicSample, T>
+#endif
+
+#ifndef STAT_INLINE
+#	if defined(_MSC_VER)
+#		define STAT_INLINE __forceinline
+#	elif defined(__GNUC__) || defined(__clang__)
+#		define STAT_INLINE inline __attribute__((always_inline))
+#	else
+#		define STAT_INLINE inline
+#	endif
 #endif
 
 namespace ljl::Stat
 {
 	namespace // priv stuff
 	{
-		inline std::string s_errString;
-		inline std::string s_errHolder;
-
 		struct __BasicSample
 		{
-			virtual double getVar() const = 0;
+			virtual double getVar() const STAT_NOEXCEPT = 0;
 
-			virtual double getStdDev() const = 0;
+			virtual double getStdDev() const STAT_NOEXCEPT = 0;
 
 			//virtual std::string getSampleName() const = 0;
 		};
 	}
 
-	inline double p_normalCdf(double Z)
+	STAT_INLINE double p_normalCdf(double Z) STAT_NOEXCEPT
 	{
 		return 0.5 * (1.0 + std::erf(Z / std::sqrt(2.0)));
 	}
 
-	inline uint64_t factorial(uint8_t n)
+	STAT_INLINE uint64_t factorial(uint8_t n)
 	{
 		if (n > 20)
 			throw std::runtime_error("N is too large for factorial");
@@ -46,21 +78,9 @@ namespace ljl::Stat
 		return result;
 	}
 
-	inline uint64_t choose(uint8_t n, uint8_t r)
+	STAT_INLINE uint64_t choose(uint8_t n, uint8_t r)
 	{
 		return factorial(n) / (factorial(r) * factorial(n - r));
-	}
-
-	inline const std::string& getError()
-	{
-		s_errHolder = s_errString;
-		s_errString.clear();
-		return s_errHolder;
-	}
-
-	inline bool errIncured()
-	{
-		return !s_errString.empty();
 	}
 
 //  |========================================|
@@ -203,23 +223,23 @@ namespace ljl::Stat
 				);
 		}
 
-		double getMean() const
+		double getMean() const STAT_NOEXCEPT
 		{
 			return sumX / numOfElements;
 		}
 
-		double getVar() const override
+		double getVar() const STAT_NOEXCEPT override
 		{
 			double mean = this->getMean();
 			return (sumXsqr / numOfElements) - (mean * mean);
 		}
 
-		double getStdDev() const override
+		double getStdDev() const STAT_NOEXCEPT override
 		{
 			return std::sqrt(this->getVar());
 		}
 
-		void operator<<(double num)
+		void operator<<(double num) STAT_NOEXCEPT
 		{
 			this->sumX += num;
 			this->sumXsqr += num * num;
@@ -228,6 +248,55 @@ namespace ljl::Stat
 
 		double sumX = 0;
 		double sumXsqr = 0;
+		size_t numOfElements = 0;
+	};
+
+    STAT_NODISCARD 
+    ContinuosSample operator+(const ContinuosSample& lhs, const ContinuosSample& rhs) STAT_NOEXCEPT
+    {
+        ContinuosSample newSample;
+        newSample.numOfElements = lhs.numOfElements + rhs.numOfElements;
+        newSample.sumXsqr       = lhs.sumXsqr       + lhs.sumXsqr;
+        newSample.sumX          = lhs.sumX          + rhs.sumX;
+        
+        return newSample;
+    }
+
+	struct DiscreteSample : public __BasicSample
+	{
+		double getUnbiasedEstVar() const
+		{
+			return (1.0 / (numOfElements - 1)) * (
+				sumXsqr -
+				((sumX * sumX) / numOfElements)
+				);
+		}
+
+		double getMean() const STAT_NOEXCEPT
+		{
+			return sumX / numOfElements;
+		}
+
+		double getVar() const STAT_NOEXCEPT override
+		{
+			double mean = this->getMean();
+			return (sumXsqr / numOfElements) - (mean * mean);
+		}
+
+		double getStdDev() const STAT_NOEXCEPT override
+		{
+			return std::sqrt(this->getVar());
+		}
+
+		void operator<<(size_t num) STAT_NOEXCEPT
+		{
+			this->sumX += num;
+			this->sumXsqr += num * num;
+			this->numOfElements++;
+		}
+
+		size_t sumX = 0;
+		size_t sumXsqr = 0;
 		size_t numOfElements = 0;
 	};
 
@@ -248,7 +317,7 @@ namespace ljl::Stat
 		BinomialSample(double p)
 			: p(p) { }
 
-		double getProportion() const
+		double getProportion() const STAT_NOEXCEPT
 		{
 			return this->p;
 		}
@@ -275,8 +344,6 @@ namespace ljl::Stat
 				}
 				else
 				{
-					s_errString = "ERROR: SIZE OF SAMPLE IS TOO LARGE TO ESTIMATE CHANCE OF";
-
 					return std::unexpected("ERROR: SIZE OF SAMPLE IS TOO LARGE TO ESTIMATE CHANCE OF");
 				}
 
@@ -288,33 +355,33 @@ namespace ljl::Stat
 			}
 		}
 
-		double getExpected() const
+		double getExpected() const STAT_NOEXCEPT
 		{
 			return (numFails + numSuccsess) * p;
 		}
 
-		double getPHat() const
+		double getPHat() const STAT_NOEXCEPT
 		{
 			return static_cast<double>(numSuccsess) / static_cast<double>(numSuccsess + numFails);
 		}
 
-		double getVar() const override
+		double getVar() const STAT_NOEXCEPT override
 		{
 			size_t n = numSuccsess + numFails;
 			return (p * (1.0 - p)) / n; // variance of proportion
 		}
 
-		double getStdDev() const override
+		double getStdDev() const STAT_NOEXCEPT override
 		{
 			return std::sqrt(this->getVar());
 		}
 
-		size_t getNumDataPoints() const
+		size_t getNumDataPoints() const STAT_NOEXCEPT
 		{
 			return numSuccsess + numFails;
 		}
 
-		void operator<<(Case _case)
+		void operator<<(Case _case) STAT_NOEXCEPT
 		{
 			switch (_case)
 			{
@@ -342,7 +409,7 @@ namespace ljl::Stat
 		right
 	};
 
-	inline double N_normalApproximationProb(double z, StdDistTail tail, const ContinuosSample& sample)
+	STAT_INLINE double N_normalApproximationProb(double z, StdDistTail tail, const ContinuosSample& sample) STAT_NOEXCEPT
 	{
 		double mean = sample.getMean();
 		double stdDev = sample.getStdDev();
@@ -375,7 +442,7 @@ namespace ljl::Stat
 		return -1.0f; // something went wrong if you get this
 	}
 
-	inline double N_normalAproxToBinomial(double z, StdDistTail tail, const BinomialSample& sample)
+	STAT_INLINE double N_normalAproxToBinomial(double z, StdDistTail tail, const BinomialSample& sample) STAT_NOEXCEPT
 	{
 		double mean = sample.getExpected();
 		double stdDev = sample.getStdDev();
@@ -432,8 +499,9 @@ namespace ljl::Stat
 	// of incorectly rejecting the true null hypothosis or in this
 	// case the probabillity of incorectly stating a sample has 
 	// increased/decreased/changed from the population
-	template<typename T> requires std::is_base_of_v<__BasicSample, T>
-	inline double HY_getCriticalSignificanLevel(HypothTestType testType, PopVarianceEstimationType estType, const T& controlSample, const T& testSample)
+	template<typename T> 
+		STAT_REQUIRE_BASE_SAMPLE
+	STAT_INLINE double HY_getCriticalSignificanLevel(HypothTestType testType, PopVarianceEstimationType estType, const T& controlSample, const T& testSample)
 	{
 		if constexpr (std::is_same_v<T, ContinuosSample>)
 		{
@@ -471,7 +539,52 @@ namespace ljl::Stat
 				return 2.0 * (1.0 - p_normalCdf(Z));
 			}
 
-			return -1.0f;
+			return -1.0f; // prevent compiler warning
+		}
+		else if constexpr (std::is_same_v<T, DiscreteSample)
+		{
+			// mu   = population mean (assumed)
+			// s2   = population sd (assumed)
+			// xBar = sample mean
+			// s2   = sample sd
+			double
+				mu = controlSample.getMean(),
+				xBar = testSample.getMean(),
+
+				sigma = 0.0
+				;
+
+			switch (estType)
+			{
+			case PopVarianceEstimationType::usePopulation:
+				sigma = controlSample.getStdDev();
+				break;
+			case PopVarianceEstimationType::useUnbaisedEstimate:
+				sigma = std::sqrt(testSample.getUnbiasedEstVar());
+				break;
+			}
+
+			size_t n = testSample.numOfElements;
+			double contCorrection = 0.0;
+			if(testType != HypothTestType::hasChanged)
+				contCorrection = (testType == HypothTestType::hasDecreased) ? -0.5 : 0.5;
+			else
+			{
+				
+			}
+			double Z = (xBar - mu + contCorrection) / (sigma / std::sqrt(n));
+
+			switch (testType)
+			{
+			case HypothTestType::hasIncreased:
+				return 1.0 - p_normalCdf(Z);
+			case HypothTestType::hasDecreased:
+				return p_normalCdf(Z);
+			case HypothTestType::hasChanged:
+				return 2.0 * (1.0 - p_normalCdf(Z));
+			}
+
+			return -1.0f; // prevent compiler warning
 		}
 		else if constexpr (std::is_same_v<T, BinomialSample>)
 		{
@@ -512,43 +625,17 @@ namespace ljl::Stat
 				return 2.0 * (1.0 - p_normalCdf(std::abs(Z)));
 			}
 
-			return -1.0f;
+			return -1.0f; // prevent compiler warning
 		}
 		else
 			throw InvalidSampleTypeException{"Invalid sample type given to hypothosis test, supportted types are Binomial and Continuous"};
 	}
 
-
-	inline double HY_getCriticalSignificanLevel(HypothTestType testType, double stdDev, const ContinuosSample& controlSample, const ContinuosSample& testSample)
-	{
-		// mu   = population mean (assumed)
-		// s2   = population sd (assumed)
-		// xBar = sample mean
-		// s2   = sample sd
-		double
-			mu = controlSample.getMean(),
-			xBar = testSample.getMean(),
-
-			sigma = stdDev
-			;
-
-		size_t n = testSample.numOfElements;
-		double Z = (xBar - mu) / (sigma / std::sqrt(n));
-
-		switch (testType)
-		{
-		case HypothTestType::hasIncreased:
-			return 1.0 - p_normalCdf(Z);
-		case HypothTestType::hasDecreased:
-			return p_normalCdf(Z);
-		case HypothTestType::hasChanged:
-			return 2.0 * (1.0 - p_normalCdf(Z));
-		}
-
-		return -1.0f;
-	}
-
-	inline bool HY_performHypothTest(HypothTestType testType, PopVarianceEstimationType estType, double sigLevel, const ContinuosSample& controlSample, const ContinuosSample& testSample)
+	STAT_INLINE bool HY_performHypothTest(HypothTestType testType, 
+										  PopVarianceEstimationType estType, 
+										  double sigLevel, 
+										  const ContinuosSample& controlSample, 
+										  const ContinuosSample& testSample)
 	{
 		// mu   = population mean (assumed)
 		// s2   = population sd (assumed)
