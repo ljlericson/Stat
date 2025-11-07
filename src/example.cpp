@@ -40,10 +40,6 @@ void example()
 	else
 		std::cout << result.error() << '\n';
 
-	// other style of err handling, both work
-	if(Stat::errIncured())
-		std::cout << Stat::getError() << '\n';
-
 	std::cout << Stat::HY_getCriticalSignificanLevel<Stat::BinomialSample>(
 		Stat::HypothTestType::hasChanged,
 		Stat::PopVarianceEstimationType::usePopulation,
@@ -52,8 +48,10 @@ void example()
 	) << '\n';
 }
 
-int main()
-{
-	example();
-	return 0;
-}
+// uncoment if trying to fun this example
+
+// int main()
+// {
+// 	example();
+// 	return 0;
+// }

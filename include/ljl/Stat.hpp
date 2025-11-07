@@ -60,7 +60,7 @@ namespace ljl::Stat
 		};
 	}
 
-	STAT_INLINE double p_normalCdf(double Z) STAT_NOEXCEPT
+	STAT_INLINE double normalCdf(double Z) STAT_NOEXCEPT
 	{
 		return 0.5 * (1.0 + std::erf(Z / std::sqrt(2.0)));
 	}
@@ -421,20 +421,20 @@ namespace ljl::Stat
 		case StdDistTail::left:
 			if (z > mean)
 			{
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			}
 			else
 			{
-				return 1.0f - p_normalCdf(Z);
+				return 1.0f - normalCdf(Z);
 			}
 		case StdDistTail::right:
 			if (z < mean)
 			{
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			}
 			else
 			{
-				return 1.0f - p_normalCdf(Z);
+				return 1.0f - normalCdf(Z);
 			}
 			break;
 		}
@@ -456,20 +456,20 @@ namespace ljl::Stat
 		case StdDistTail::left:
 			if (z > mean)
 			{
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			}
 			else
 			{
-				return 1.0f - p_normalCdf(Z);
+				return 1.0f - normalCdf(Z);
 			}
 		case StdDistTail::right:
 			if (z < mean)
 			{
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			}
 			else
 			{
-				return 1.0f - p_normalCdf(Z);
+				return 1.0f - normalCdf(Z);
 			}
 			break;
 		}
@@ -532,11 +532,11 @@ namespace ljl::Stat
 			switch (testType)
 			{
 			case HypothTestType::hasIncreased:
-				return 1.0 - p_normalCdf(Z);
+				return 1.0 - normalCdf(Z);
 			case HypothTestType::hasDecreased:
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			case HypothTestType::hasChanged:
-				return 2.0 * (1.0 - p_normalCdf(Z));
+				return 2.0 * (1.0 - normalCdf(Z));
 			}
 
 			return -1.0f; // prevent compiler warning
@@ -577,11 +577,11 @@ namespace ljl::Stat
 			switch (testType)
 			{
 			case HypothTestType::hasIncreased:
-				return 1.0 - p_normalCdf(Z);
+				return 1.0 - normalCdf(Z);
 			case HypothTestType::hasDecreased:
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			case HypothTestType::hasChanged:
-				return 2.0 * (1.0 - p_normalCdf(Z));
+				return 2.0 * (1.0 - normalCdf(Z));
 			}
 
 			return -1.0f; // prevent compiler warning
@@ -618,11 +618,11 @@ namespace ljl::Stat
 			switch (testType)
 			{
 			case HypothTestType::hasIncreased:
-				return 1.0 - p_normalCdf(Z);
+				return 1.0 - normalCdf(Z);
 			case HypothTestType::hasDecreased:
-				return p_normalCdf(Z);
+				return normalCdf(Z);
 			case HypothTestType::hasChanged:
-				return 2.0 * (1.0 - p_normalCdf(std::abs(Z)));
+				return 2.0 * (1.0 - normalCdf(std::abs(Z)));
 			}
 
 			return -1.0f; // prevent compiler warning
@@ -664,11 +664,11 @@ namespace ljl::Stat
 		switch (testType)
 		{
 		case HypothTestType::hasIncreased:
-			return sigLevel > (1.0 - p_normalCdf(Z));
+			return sigLevel > (1.0 - normalCdf(Z));
 		case HypothTestType::hasDecreased:
-			return sigLevel > (p_normalCdf(Z));
+			return sigLevel > (normalCdf(Z));
 		case HypothTestType::hasChanged:
-			return sigLevel > (2.0 * (1.0 - p_normalCdf(Z)));
+			return sigLevel > (2.0 * (1.0 - normalCdf(Z)));
 		}
 
 		return false;
