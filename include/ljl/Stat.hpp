@@ -274,7 +274,7 @@ namespace ljl::Stat
 
 		double getMean() const STAT_NOEXCEPT
 		{
-			return sumX / numOfElements;
+			return static_cast<double>(sumX) / static_cast<double>(numOfElements);
 		}
 
 		double getVar() const STAT_NOEXCEPT override
@@ -541,7 +541,7 @@ namespace ljl::Stat
 
 			return -1.0f; // prevent compiler warning
 		}
-		else if constexpr (std::is_same_v<T, DiscreteSample)
+		else if constexpr (std::is_same_v<T, DiscreteSample>)
 		{
 			// mu   = population mean (assumed)
 			// s2   = population sd (assumed)
